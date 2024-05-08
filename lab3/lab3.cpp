@@ -84,23 +84,21 @@ Result runOnAccessors(sycl::queue &queue, const std::vector<_float_t> &A, const 
         sycl::buffer<_float_t> buf_x_prev(x_prev.data(), x_prev.size());
         sycl::buffer<_float_t> buf_x_cur(x_cur.data(), x_cur.size());
 
-        sycl::event event = queue.submit([&](sycl::handler &h) {
-			//sycl::stream s(1024, 80, h);
-			auto acc_A = buf_A.get_access<sycl::access::mode::read>(h);
-			auto acc_b = buf_b.get_access<sycl::access::mode::read>(h);
-			auto acc_x_prev = buf_x_prev.get_access<sycl::access::mode::read_write>(h);
-			auto acc_x_cur = buf_x_cur.get_access<sycl::access::mode::read_write>(h);
+        sycl::event event = queue.submit([&](sycl::handler &cgh) {
+			sycl::accessor acc_A{buf_A, cgh, sycl::read_only};
+			sycl::accessor acc_b{buf_b, cgh, sycl::read_only};
+			sycl::accessor acc_x_prev{buf_x_prev, cgh, sycl::read_write};
+			sycl::accessor acc_x_cur{buf_x_cur, cgh, sycl::read_write};
 
-			h.parallel_for(sycl::range<1>(N), [=](sycl::item<1> item) {
-				int i = item.get_id(0);
-				int n = item.get_range(0);
+			cgh.parallel_for(sycl::range<1>(N), [=](sycl::id<1> id) {
+				int i = id.get(0);
 				_float_t sum = 0.0;
 
-				for (int j = 0; j < n; j++)
+				for (int j = 0; j < N; j++)
 					if (j != i)
-                        sum += acc_A[i * n + j] * acc_x_prev[j];
+                        sum += acc_A[i * N + j] * acc_x_prev[j];
 
-				acc_x_cur[i] = (acc_b[i] - sum) / acc_A[i * n + i];
+				acc_x_cur[i] = (acc_b[i] - sum) / acc_A[i * N + i];
 				std::swap(acc_x_prev[i], acc_x_cur[i]);
 			});
         });
@@ -133,18 +131,16 @@ Result runOnSharedMemory(sycl::queue &queue, const std::vector<_float_t> &A, con
     uint64_t time = 0;
     int iter = 0;
     do {
-        sycl::event event = queue.submit([&](sycl::handler &h) {
-			//sycl::stream s(1024, 80, h);
-			h.parallel_for(sycl::range<1>(N), [=](sycl::item<1> item) {
+        sycl::event event = queue.submit([&](sycl::handler &cgh) {
+			cgh.parallel_for(sycl::range<1>(N), [=](sycl::item<1> item) {
 				int i = item.get_id(0);
-				int n = item.get_range(0);
 				_float_t sum = 0.0;
 
-				for (int j = 0; j < n; j++)
+				for (int j = 0; j < N; j++)
 					if (j != i)
-                        sum += sh_A[i * n + j] * sh_x_prev[j];
+                        sum += sh_A[i * N + j] * sh_x_prev[j];
 
-				sh_x_cur[i] = (sh_b[i] - sum) / sh_A[i * n + i];
+				sh_x_cur[i] = (sh_b[i] - sum) / sh_A[i * N + i];
 				std::swap(sh_x_prev[i], sh_x_cur[i]);
 			});
         });
@@ -186,7 +182,6 @@ Result runOnDeviceMemory(sycl::queue &queue, const std::vector<_float_t> &A, con
     int iter = 0;
     do {
         sycl::event event = queue.submit([&](sycl::handler &cgh) {
-			sycl::stream s(1024, 80, cgh);
 			cgh.parallel_for(sycl::range<1>(N), [=](sycl::item<1> item) {
 				int i = item.get_id(0);
 				int n = item.get_range(0);

@@ -34,7 +34,6 @@ int main(int argc, char* argv[]) {
         sycl::buffer<_float_t> buffer(res.data(), res.size());
         sycl::event event = queue.submit([&](sycl::handler &cgh) {
             sycl::accessor accessor{buffer, cgh, sycl::write_only};
-            //sycl::stream s(4096, 80, cgh);
             cgh.parallel_for(sycl::nd_range<2>(  // global size/local size=number of work-groups (on Nvidia must be int)
                         sycl::range<2>(intervalsCount, intervalsCount),  // global range, a number of work-items
                         sycl::range<2>(GROUP_SIZE, GROUP_SIZE)),  // local range, a number of work-items in a work-group
@@ -42,7 +41,6 @@ int main(int argc, char* argv[]) {
                 _float_t x = dx * (item.get_global_id(0) + 0.5);
                 _float_t y = dy * (item.get_global_id(1) + 0.5);
                 _float_t itemVal = sycl::sin(x)*sycl::cos(y)*dx*dy;
-                //s << item.get_global_id(0) << " " << item.get_global_id(1) << ": " << sycl::sin(x)*sycl::cos(y) << " * " << dx*dy << " = "  << sycl::sin(x)*sycl::cos(y)*dx*dy << " " << itemVal << sycl::endl;
                 _float_t groupSum = sycl::reduce_over_group(item.get_group(), itemVal, std::plus<_float_t>());
                 if (item.get_local_id(0) == 0 && item.get_local_id(1) == 0) {
                     accessor[item.get_group(0) * item.get_group_range(0) + item.get_group(1)] = groupSum;
