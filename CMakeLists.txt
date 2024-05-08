@@ -11,3 +11,6 @@ add_executable(lab1 ${SOURCES_LAB1})
 
 file(GLOB SOURCES_LAB2 lab2/*.cpp lab2/*.h)
 add_executable(lab2 ${SOURCES_LAB2})
+
+file(GLOB SOURCES_LAB3 lab3/*.cpp lab3/*.h)
+add_executable(lab3 ${SOURCES_LAB3})
