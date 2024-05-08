@@ -22,13 +22,13 @@ int main(int argc, char* argv[]) {
             return (device == sycl::device(sycl::default_selector_v)) ? 1 : -1;
     };
 
-    sycl::queue queue(my_selector_v);
-    std::cout << "Using " << queue.get_device().get_info<sycl::info::device::name>() << std::endl;
+    sycl::queue queue(my_selector_v, sycl::property::queue::enable_profiling{});
+    std::cout << "Using " << queue.get_device().get_info<sycl::info::device::name>() << "\n\n";
 
     std::vector<double> res(groupsCount * groupsCount, 0.0);
     {
         sycl::buffer<double> buffer(res.data(), res.size());
-        queue.submit([&](sycl::handler &cgh) {
+        sycl::event event = queue.submit([&](sycl::handler &cgh) {
             sycl::accessor accessor{buffer, cgh, sycl::write_only};
             //sycl::stream s(4096, 80, cgh);
             cgh.parallel_for(sycl::nd_range<2>(  // global size/local size=number of work-groups (on Nvidia must be int)
@@ -44,16 +44,21 @@ int main(int argc, char* argv[]) {
                     accessor[item.get_group(0) * item.get_group_range(0) + item.get_group(1)] = groupSum;
                 }
             });
-        }).wait();
+        });
+        event.wait();
+
+        uint64_t start = event.get_profiling_info<sycl::info::event_profiling::command_start>();
+        uint64_t end = event.get_profiling_info<sycl::info::event_profiling::command_end>();
+        std::cout << "time: " << end - start << " ns\n";
     }
 
-    double calcRes = 0;
+    double calc_res = 0;
     for (std::size_t i = 0; i < res.size(); i++)
-        calcRes += res[i];
+        calc_res += res[i];
     
     std::cout << "expected result: " << EXP_RES << "\n";
-    std::cout << "calculated result: " << calcRes << "\n";
-    std::cout << "error: " << std::abs(EXP_RES - calcRes) << "\n";
+    std::cout << "calculated result: " << calc_res << "\n";
+    std::cout << "error: " << std::abs(EXP_RES - calc_res) << "\n";
 
     return 0;
 }
