@@ -4,14 +4,15 @@
 
 int main(int argc, char* argv[]) {
     // sin(x)cos(y)dxdy, x from 0 to 1, y from 0 to 1 ~= 0.3868223
-    constexpr double EXP_VAL = 0.3868223;
+    constexpr double EXP_RES = 0.3868223;
 
     constexpr std::size_t GROUP_SIZE = 16;
     const std::size_t intervals = std::stoi(argv[1]);
     const double dx = 1.0 / intervals;
     const double dy = 1.0 / intervals;
+    const std::size_t groupsCount = intervals / GROUP_SIZE + 1;
 
-    const std::string deviceStr(argv[2]);
+    const std::string deviceStr = argv[2];
     auto my_selector_v = [&](sycl::device device) {
         if (deviceStr == "cpu")
             return device.is_cpu() ? 1 : -1;
@@ -24,17 +25,35 @@ int main(int argc, char* argv[]) {
     sycl::queue queue(my_selector_v);
     std::cout << "Using " << queue.get_device().get_info<sycl::info::device::name>() << std::endl;
 
-    queue.submit([&](sycl::handler &cgh) {
-        cgh.parallel_for(sycl::nd_range<2>(  // global size / local size = number of work-groups (on Nvidia must be int)
+    std::vector<double> res(groupsCount * groupsCount, 0.0);
+    {
+        sycl::buffer<double> buffer(res.data(), res.size());
+        queue.submit([&](sycl::handler &cgh) {
+            sycl::accessor accessor{buffer, cgh, sycl::write_only};
+            //sycl::stream s(4096, 80, cgh);
+            cgh.parallel_for(sycl::nd_range<2>(  // global size/local size=number of work-groups (on Nvidia must be int)
                         sycl::range<2>(intervals, intervals),  // global range, a number of work-items
                         sycl::range<2>(GROUP_SIZE, GROUP_SIZE)),  // local range, a number of work-items in a work-group
-        [=](sycl::nd_item<2> item){
-            double x = dx * (item.get_global_id(0) + 0.5);
-            double y = dy * (item.get_global_id(1) + 0.5);
-            double val = sycl::sin(x)*sycl::cos(y)*dx*dy;
-            double sum = sycl::reduce_over_group(item.get_group(), val, std::plus<double>());
-        });
-    });
+            [=](sycl::nd_item<2> item){
+                double x = dx * (item.get_global_id(0) + 0.5);
+                double y = dy * (item.get_global_id(1) + 0.5);
+                double itemVal = sycl::sin(x)*sycl::cos(y)*dx*dy;
+                //s << item.get_global_id(0) << " " << item.get_global_id(1) << ": " << sycl::sin(x)*sycl::cos(y) << " * " << dx*dy << " = "  << sycl::sin(x)*sycl::cos(y)*dx*dy << " " << itemVal << sycl::endl;
+                double groupSum = sycl::reduce_over_group(item.get_group(), itemVal, std::plus<double>());
+                if (item.get_local_id(0) == 0 && item.get_local_id(1) == 0) {
+                    accessor[item.get_group(0) * item.get_group_range(0) + item.get_group(1)] = groupSum;
+                }
+            });
+        }).wait();
+    }
+
+    double calcRes = 0;
+    for (std::size_t i = 0; i < res.size(); i++)
+        calcRes += res[i];
+    
+    std::cout << "expected result: " << EXP_RES << "\n";
+    std::cout << "calculated result: " << calcRes << "\n";
+    std::cout << "error: " << std::abs(EXP_RES - calcRes) << "\n";
 
     return 0;
 }
