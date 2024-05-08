@@ -7,10 +7,12 @@ int main(int argc, char* argv[]) {
     constexpr double EXP_RES = 0.3868223;
 
     constexpr std::size_t GROUP_SIZE = 16;
-    const std::size_t intervals = std::stoi(argv[1]);
-    const double dx = 1.0 / intervals;
-    const double dy = 1.0 / intervals;
-    const std::size_t groupsCount = intervals / GROUP_SIZE + 1;
+    const std::size_t intervalsCount = std::stoi(argv[1]);
+    std::cout << "Iteration space: " << intervalsCount << " x " << intervalsCount << ", "
+                                            << GROUP_SIZE << " x " << GROUP_SIZE << "\n";
+    const double dx = 1.0 / intervalsCount;
+    const double dy = 1.0 / intervalsCount;
+    const std::size_t groupsCount = intervalsCount / GROUP_SIZE + 1;
 
     const std::string deviceStr = argv[2];
     auto my_selector_v = [&](sycl::device device) {
@@ -25,14 +27,14 @@ int main(int argc, char* argv[]) {
     sycl::queue queue(my_selector_v, sycl::property::queue::enable_profiling{});
     std::cout << "Using " << queue.get_device().get_info<sycl::info::device::name>() << "\n\n";
 
-    std::vector<double> res(groupsCount * groupsCount, 0.0);
+    std::vector<double> res(groupsCount*groupsCount, 0.0);
     {
         sycl::buffer<double> buffer(res.data(), res.size());
         sycl::event event = queue.submit([&](sycl::handler &cgh) {
             sycl::accessor accessor{buffer, cgh, sycl::write_only};
             //sycl::stream s(4096, 80, cgh);
             cgh.parallel_for(sycl::nd_range<2>(  // global size/local size=number of work-groups (on Nvidia must be int)
-                        sycl::range<2>(intervals, intervals),  // global range, a number of work-items
+                        sycl::range<2>(intervalsCount, intervalsCount),  // global range, a number of work-items
                         sycl::range<2>(GROUP_SIZE, GROUP_SIZE)),  // local range, a number of work-items in a work-group
             [=](sycl::nd_item<2> item){
                 double x = dx * (item.get_global_id(0) + 0.5);
